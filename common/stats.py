@@ -164,12 +164,12 @@ def get_temporalROI(path):
 
 def get_roi(video_path):
     roi_path = os.path.join(video_path, "ROI.bmp")
-    roi = torch.from_numpy(cv2.imread(roi_path, 0))
+    roi = cv2.imread(roi_path, 0)
     if "traffic" in video_path:
         # 数据集中 traffic 视频序列 的ROI.bmp 与数据集尺寸不同
         roi_path_jpg = os.path.join(video_path, "ROI.jpg")
         roi_size = cv2.imread(roi_path_jpg, 0).shape
-        roi = torch.from_numpy(cv2.resize(cv2.imread(roi_path, 0), (roi_size[1], roi_size[0])))
+        roi = cv2.resize(cv2.imread(roi_path, 0), (roi_size[1], roi_size[0]))
 
     return roi
 
@@ -193,7 +193,7 @@ def compare_with_groundtruth(CM, videoPath, binaryPath):
     for bin_filename in os.listdir(binaryPath)[start_frame_id-1:end_frame_id + 1]:
         bin_path = os.path.join(binaryPath, bin_filename)
 
-        CM.evaluate(torch.from_numpy(cv2.imread(bin_path, 0)), torch.from_numpy(get_gt(videoPath, bin_filename)), roi)
+        CM.evaluate(torch.from_numpy(cv2.imread(bin_path, 0)), torch.from_numpy(get_gt(videoPath, bin_filename)), torch.from_numpy(roi))
 
     return [CM.TP.numpy(), CM.FP.numpy(), CM.FN.numpy(), CM.TN.numpy(), 0]
 

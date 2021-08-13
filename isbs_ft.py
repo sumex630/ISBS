@@ -10,12 +10,14 @@ import argparse
 import os
 import time
 from functools import reduce
+from pprint import pprint
 
 import numpy as np
 
 import cv2
+import torch
 
-from common.stats import ConfusionMatrix, get_temporalROI, get_roi, get_gt
+from common.stats import ConfusionMatrix, get_temporalROI, get_roi, get_gt, get_stats
 from common.util import saveimg
 
 parser = argparse.ArgumentParser()
@@ -35,10 +37,10 @@ parser.add_argument("-bs", "--BS", help="filepath to the Background subtraction 
 parser.add_argument("-ds", "--datasets", help="filepath to the datasets", default=r"E:\00_Datasets\dataset2014\dataset")
 parser.add_argument("-o",  "--output_path", help="filepath to the output_path", default="results/is_bs")
 parser.add_argument("-s",  "--sub_rootpath", help="filepath to the sub_rootpath", default="")
+parser.add_argument("-ft",  "--fine_tuning", help="filepath to the fine tuning", default="fine_tuning")
 parser.add_argument("-opt", "--optimized", help="optimized ", default=0, type=int)
 parser.add_argument("-r", "--ratio", help="bs / is", default=0.3, type=float)
 
-args = parser.parse_args()
 
 
 def optimized(frame, K):
@@ -55,30 +57,31 @@ def optimized(frame, K):
     return frame
 
 
+def save_ft(path, data):
+    if not os.path.exists(path):
+        os.mkdir(path)
+    ft_path = os.path.join(path, sub_rootpath + ".txt")
+    with open(ft_path, "w") as f:
+        f.write(data)
+
+
 def isbs():
-    filerootpath_is = args.IS  # 实例分割模型检测出的单个mask
-    filerootpath_bs = args.BS  # 背景减除算法结果
-    ratio = args.ratio  # 比率
-    opt = args.optimized  # 是否使用形态学
-    localtime = time.strftime("%Y%m%d", time.localtime())
-    # localtime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-    datasets_path = args.datasets
-    output_path = args.output_path
-    sub_rootpath = args.sub_rootpath if args.sub_rootpath else "{}_".format(localtime) + "ratio={}".format(ratio) + "_opt={}".format(opt)
+
     ii = 0  # 计数
+    fine_tuning = {}
 
     for dirpath, dirnames, filenames in os.walk(filerootpath_bs):
-        if filenames:  #  and 'boats' in dirpath  corridor traffic
+        if filenames and 'baseline' in dirpath:  #  and 'boats' in dirpath  corridor traffic
             ii += 1
             print("{} dirpath: {}".format(ii, dirpath))  # 'data\\bs\\baseline\\office'
             dirpath_list = dirpath.replace('\\', '/').split('/')  # 切割路径
+            dict_k = dirpath_list[-2]+ "_" + dirpath_list[-1]
             video_path = os.path.join(datasets_path, dirpath_list[-2], dirpath_list[-1])
 
             # 有效帧
             vaild_frames = get_temporalROI(video_path)  # 有效帧范围
             start_frame_id = int(vaild_frames[0])  # 起始帧号
             end_frame_id = int(vaild_frames[1])  # 结束帧号
-
 
             # 创建 混淆矩阵
             CM_1 = ConfusionMatrix()
@@ -150,18 +153,49 @@ def isbs():
                     roi = get_roi(video_path)
                     gt = get_gt(video_path, filename_bs)
 
-                    CM_1.evaluate(masks_1, gt, roi)
-                    CM_2.evaluate(masks_2, gt, roi)
-                    CM_3.evaluate(masks_3, gt, roi)
-                    CM_4.evaluate(masks_4, gt, roi)
-                    CM_5.evaluate(masks_5, gt, roi)
+                    CM_1.evaluate(torch.from_numpy(masks_1), torch.from_numpy(gt), torch.from_numpy(roi))
+                    CM_2.evaluate(torch.from_numpy(masks_2), torch.from_numpy(gt), torch.from_numpy(roi))
+                    CM_3.evaluate(torch.from_numpy(masks_3), torch.from_numpy(gt), torch.from_numpy(roi))
+                    CM_4.evaluate(torch.from_numpy(masks_4), torch.from_numpy(gt), torch.from_numpy(roi))
+                    CM_5.evaluate(torch.from_numpy(masks_5), torch.from_numpy(gt), torch.from_numpy(roi))
+
+            # 计算指标
+            cm_dict = {}
+            cm_dict["1"] = get_stats([CM_1.TP.numpy(), CM_1.FP.numpy(), CM_1.FN.numpy(), CM_1.TN.numpy(), 0])["FMeasure"]
+            cm_dict["2"] = get_stats([CM_2.TP.numpy(), CM_2.FP.numpy(), CM_2.FN.numpy(), CM_2.TN.numpy(), 0])["FMeasure"]
+            cm_dict["3"] = get_stats([CM_3.TP.numpy(), CM_3.FP.numpy(), CM_3.FN.numpy(), CM_3.TN.numpy(), 0])["FMeasure"]
+            cm_dict["4"] = get_stats([CM_4.TP.numpy(), CM_4.FP.numpy(), CM_4.FN.numpy(), CM_4.TN.numpy(), 0])["FMeasure"]
+            cm_dict["5"] = get_stats([CM_5.TP.numpy(), CM_5.FP.numpy(), CM_5.FN.numpy(), CM_5.TN.numpy(), 0])["FMeasure"]
+
+            # 根据 value 对字典排序  (k, v)
+            sorted_cms = sorted(cm_dict.items(), key=lambda kv: (kv[1], kv[0]))
+            fine_tuning[dict_k] = sorted_cms
+
+    # pprint(fine_tuning)
+    # 保存
+    save_ft(fine_tuning_path, str(fine_tuning))
+    # 重新计算 最优情况
 
 
 
-                    # ########## save
-                    # saveimg(masks, filename_bs, dirpath, output_path, sub_rootpath)
+
+
+
 
 
 if __name__ == '__main__':
+    args = parser.parse_args()
+
+    filerootpath_is = args.IS  # 实例分割模型检测出的单个mask
+    filerootpath_bs = args.BS  # 背景减除算法结果
+    ratio = args.ratio  # 比率
+    opt = args.optimized  # 是否使用形态学
+    localtime = time.strftime("%Y%m%d", time.localtime())
+    # localtime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+    datasets_path = args.datasets
+    output_path = args.output_path
+    sub_rootpath = args.sub_rootpath if args.sub_rootpath else "{}_".format(localtime) + "_opt={}".format(opt)
+    fine_tuning_path = args.fine_tuning
+
     isbs()
 
