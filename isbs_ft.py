@@ -71,7 +71,7 @@ def isbs():
     fine_tuning = {}
 
     for dirpath, dirnames, filenames in os.walk(filerootpath_bs):
-        if filenames and 'baseline' in dirpath:  #  and 'boats' in dirpath  corridor traffic
+        if filenames and 'pedestrians' in dirpath:  #  and 'boats' in dirpath  corridor traffic
             ii += 1
             print("{} dirpath: {}".format(ii, dirpath))  # 'data\\bs\\baseline\\office'
             dirpath_list = dirpath.replace('\\', '/').split('/')  # 切割路径
@@ -171,14 +171,60 @@ def isbs():
             sorted_cms = sorted(cm_dict.items(), key=lambda kv: (kv[1], kv[0]))
             fine_tuning[dict_k] = sorted_cms
 
-    # pprint(fine_tuning)
+    pprint(fine_tuning)
     # 保存
     save_ft(fine_tuning_path, str(fine_tuning))
     # 重新计算 最优情况
 
 
+def isbs_ft(ft_data):
+    """
+    微调
+    :param ft_data:
+    :return:
+    """
+    ii = 0
+    for dirpath, dirnames, filenames in os.walk(filerootpath_bs):
+        if filenames:  #  and 'boats' in dirpath  corridor traffic
+            ii += 1
+            print("{} dirpath: {}".format(ii, dirpath))  # 'data\\bs\\baseline\\office'
+            dirpath_list = dirpath.replace('\\', '/').split('/')  # 切割路径
+            dict_k = dirpath_list[-2] + "_" + dirpath_list[-1]
 
+            for filename_bs in filenames:
+                # 背景减除算法 mask
+                imgpath_bs = os.path.join(dirpath, filename_bs)
+                bs_mask = cv2.imread(imgpath_bs, 0)
 
+                # 实例分割模型 masks
+                filepath_is = os.path.join(filerootpath_is + dirpath.split(filerootpath_bs)[-1], filename_bs[:-4])
+                masks = np.zeros_like(bs_mask)
+                if opt:
+                    # 是否优化
+                    bs_mask = optimized(bs_mask, 3)
+
+                for filename_is in os.listdir(filepath_is):
+                    imgpath_is = os.path.join(filepath_is, filename_is)
+                    is_mask = cv2.imread(imgpath_is, 0)
+
+                    is_mask_pixel_num = (is_mask.reshape(-1) == 255).sum()
+
+                    # 避免实例分割模型 将一整张图片检测成一个mask
+                    if is_mask_pixel_num / (is_mask.shape[0] * is_mask.shape[1]) > 0.8:
+                        masks = bs_mask
+                        break
+                    # 二者取 交
+                    bs_and_is_mask = cv2.bitwise_and(is_mask, bs_mask)
+                    bs_and_is_mask_pixel_num = (bs_and_is_mask.reshape(-1) == 255).sum()
+                    # 实例分割模型结果无前景目标
+                    if is_mask_pixel_num == 0:
+                        continue
+                    # 动态前景 叠加
+                    if bs_and_is_mask_pixel_num / is_mask_pixel_num > ratio:
+                        masks = cv2.bitwise_or(masks, is_mask)
+
+                # ########## save
+                saveimg(masks, filename_bs, dirpath, output_path, sub_rootpath)
 
 
 
