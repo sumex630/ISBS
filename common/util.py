@@ -8,6 +8,7 @@
 @brief: 
 """
 import os
+import numpy as np
 import time
 from pprint import pprint
 
@@ -71,6 +72,10 @@ def optimize_median(single_frame, K):
     return blur
 
 
+def img2uint8(frame):
+    return cv2.threshold(frame, 0, 255, cv2.THRESH_BINARY)[1].astype(np.uint8)
+
+
 def saveimg(frame, filename, input_path, output_path, sub_rootpath=None):
     """
     Args:
@@ -96,17 +101,17 @@ def saveimg(frame, filename, input_path, output_path, sub_rootpath=None):
             os.mkdir(save_dir_path_masks)
 
         save_path_mask = os.path.join(save_dir_path_mask, filename)
-        cv2.imwrite(save_path_mask, frame["mask"])
+        cv2.imwrite(save_path_mask, img2uint8(frame["mask"]))
 
         for id_m, f in enumerate(frame["masks"]):
             filename = str(id_m) + '.jpg'
             save_path_masks = os.path.join(save_dir_path_masks, filename)
-            cv2.imwrite(save_path_masks, f)
+            cv2.imwrite(save_path_masks, img2uint8(f))
     else:
         save_dir_path = folder_for_save(input_path, output_path, sub_rootpath)
         save_path = os.path.join(save_dir_path, filename)
         # print(save_path)
-        cv2.imwrite(save_path, frame)
+        cv2.imwrite(save_path, img2uint8(frame))
 
 
 def save_fps(path, name, fps):
